@@ -12,9 +12,13 @@ import type {
   UserPrivate,
 } from '../types';
 
-export const HERO_STUDIO_IMAGE = '/src/assets/images/hero_vibeworking_studio_1795010353849.jpg';
-export const AVATAR_DESIGNER_IMAGE = '/src/assets/images/avatar_teen_designer_1795010353849.jpg';
-export const AVATAR_EDITOR_IMAGE = '/src/assets/images/avatar_teen_editor_1795010353300.jpg';
+import heroStudioImage from '../assets/images/hero_vibeworking_studio_1795010353849.jpg';
+import avatarDesignerImage from '../assets/images/avatar_teen_designer_1795010353849.jpg';
+import avatarEditorImage from '../assets/images/avatar_teen_editor_1795010353300.jpg';
+
+export const HERO_STUDIO_IMAGE = heroStudioImage;
+export const AVATAR_DESIGNER_IMAGE = avatarDesignerImage;
+export const AVATAR_EDITOR_IMAGE = avatarEditorImage;
 
 const nowIso = '2026-11-18T10:00:00.000Z';
 

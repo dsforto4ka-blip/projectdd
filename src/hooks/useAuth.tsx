@@ -208,8 +208,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     email: string
   ): Promise<{ mode: 'firebase_link' | 'otp_preview'; previewOtp?: string }> => {
     const cleanEmail = email.trim().toLowerCase();
+    const basePrefix = import.meta.env.BASE_URL.replace(/\/$/, '');
+    const hashPrefix = window.location.hostname.endsWith('.github.io') ? '/#' : '';
     const actionCodeSettings = {
-      url: `${window.location.origin}/auth?finishEmailSignIn=1`,
+      url: `${window.location.origin}${basePrefix}${hashPrefix}/auth?finishEmailSignIn=1`,
       handleCodeInApp: true,
     };
 

@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { BrowserRouter, Navigate, Route, Routes, useSearchParams } from 'react-router-dom';
+import { BrowserRouter, HashRouter, Navigate, Route, Routes, useSearchParams } from 'react-router-dom';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Layout } from './components/Layout';
@@ -17,6 +17,9 @@ import { MessagesPage } from './pages/MessagesPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { AdminPage } from './pages/AdminPage';
 
+const isGitHubPages =
+  typeof window !== 'undefined' && window.location.hostname.endsWith('.github.io');
+
 function AutostartHandler() {
   const [params] = useSearchParams();
   const { enterDemoSession, userPrivate } = useAuth();
@@ -32,10 +35,12 @@ function AutostartHandler() {
 }
 
 export default function App() {
+  const Router = isGitHubPages ? HashRouter : BrowserRouter;
+
   return (
     <ErrorBoundary>
       <AuthProvider>
-        <BrowserRouter>
+        <Router>
           <AutostartHandler />
           <Layout>
             <Routes>
@@ -106,7 +111,7 @@ export default function App() {
               <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
           </Layout>
-        </BrowserRouter>
+        </Router>
       </AuthProvider>
     </ErrorBoundary>
   );

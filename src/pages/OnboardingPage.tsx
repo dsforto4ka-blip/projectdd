@@ -71,7 +71,7 @@ export function OnboardingPage() {
               Ссылка для подтверждения родителем
             </p>
             <p className="font-mono text-xs text-neutral-600 dark:text-neutral-400 break-all">
-              {window.location.origin}{consentUrl}
+              {window.location.origin}{import.meta.env.BASE_URL.replace(/\/$/, '')}{window.location.hostname.endsWith('.github.io') ? '/#' : ''}{consentUrl}
             </p>
           </div>
 
