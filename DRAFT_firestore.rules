@@ -1,0 +1,806 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 0. Global Safety Net (Default Deny)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // ---------------------------------------------------------
+    // 1. Primitive Helpers
+    // ---------------------------------------------------------
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedEmail() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isVerifiedEmail() && (
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        request.auth.token.email == 'bigsans.yt@gmail.com'
+      );
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isNonEmptyString(val, maxLen) {
+      return val is string && val.size() >= 1 && val.size() <= maxLen;
+    }
+
+    function isOptionalString(val, maxLen) {
+      return val is string && val.size() <= maxLen;
+    }
+
+    function isActiveAccount() {
+      return isVerifiedEmail() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.accountStatus == 'active' &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isBanned == false;
+    }
+
+    function userRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+
+    // ---------------------------------------------------------
+    // 2. Entity Validation Helpers (Anti-Update-Gap)
+    // ---------------------------------------------------------
+    function isValidUserPrivate(data) {
+      return data.keys().hasAll([
+        'uid', 'email', 'displayName', 'role', 'ageGroup',
+        'parentalConsentStatus', 'accountStatus',
+        'walletBalance', 'escrowHeld', 'earnedBalance',
+        'emailVerified', 'idVerified', 'isBanned',
+        'createdAt', 'updatedAt'
+      ]) &&
+      data.keys().hasOnly([
+        'uid', 'email', 'displayName', 'role', 'dob', 'ageGroup',
+        'parentEmail', 'parentalConsentStatus', 'parentConsentId',
+        'accountStatus', 'walletBalance', 'escrowHeld', 'earnedBalance',
+        'emailVerified', 'idVerified', 'isBanned',
+        'createdAt', 'updatedAt'
+      ]) &&
+      isValidId(data.uid) &&
+      isNonEmptyString(data.email, 200) &&
+      isNonEmptyString(data.displayName, 80) &&
+      data.role in ['freelancer', 'client'] &&
+      (!('dob' in data) || isOptionalString(data.dob, 20)) &&
+      data.ageGroup in ['under_13', '13_17', '18_plus', 'unverified'] &&
+      (!('parentEmail' in data) || isOptionalString(data.parentEmail, 200)) &&
+      data.parentalConsentStatus in ['not_required', 'pending', 'approved', 'revoked'] &&
+      (!('parentConsentId' in data) || isOptionalString(data.parentConsentId, 128)) &&
+      data.accountStatus in ['onboarding', 'blocked_coppa', 'pending_parental_consent', 'active', 'suspended', 'banned'] &&
+      data.walletBalance is number && data.walletBalance >= 0 && data.walletBalance <= 1000000 &&
+      data.escrowHeld is number && data.escrowHeld >= 0 && data.escrowHeld <= 1000000 &&
+      data.earnedBalance is number && data.earnedBalance >= 0 && data.earnedBalance <= 1000000 &&
+      data.emailVerified is bool &&
+      data.idVerified is bool &&
+      data.isBanned is bool &&
+      data.createdAt is timestamp &&
+      data.updatedAt is timestamp;
+    }
+
+    function isValidPublicProfile(data) {
+      return data.keys().hasAll([
+        'uid', 'displayName', 'role', 'ageGroupLabel', 'bio',
+        'skills', 'portfolio', 'timezone', 'availability',
+        'rating', 'reviewCount', 'completedJobs',
+        'idVerified', 'emailVerified', 'accountStatus', 'updatedAt'
+      ]) &&
+      data.keys().hasOnly([
+        'uid', 'displayName', 'photoURL', 'role', 'ageGroupLabel', 'bio',
+        'skills', 'portfolio', 'timezone', 'availability',
+        'rating', 'reviewCount', 'completedJobs',
+        'idVerified', 'emailVerified', 'accountStatus', 'updatedAt'
+      ]) &&
+      isValidId(data.uid) &&
+      isNonEmptyString(data.displayName, 80) &&
+      (!('photoURL' in data) || isOptionalString(data.photoURL, 500)) &&
+      data.role in ['freelancer', 'client'] &&
+      data.ageGroupLabel in ['13–17 Teen Creator', '18+ Verified Member', 'Unverified'] &&
+      isOptionalString(data.bio, 500) &&
+      data.skills is list && data.skills.size() <= 15 &&
+      (data.skills.size() == 0 || data.skills[0] is string) &&
+      data.portfolio is list && data.portfolio.size() <= 12 &&
+      isOptionalString(data.timezone, 64) &&
+      data.availability in ['part-time', 'weekends', 'flexible'] &&
+      data.rating is number && data.rating >= 0 && data.rating <= 5 &&
+      data.reviewCount is number && data.reviewCount >= 0 &&
+      data.completedJobs is number && data.completedJobs >= 0 &&
+      data.idVerified is bool &&
+      data.emailVerified is bool &&
+      data.accountStatus in ['onboarding', 'blocked_coppa', 'pending_parental_consent', 'active', 'suspended', 'banned'] &&
+      data.updatedAt is timestamp;
+    }
+
+    function isValidParentConsent(data) {
+      return data.keys().hasAll(['id', 'teenUid', 'teenName', 'parentEmail', 'status', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['id', 'teenUid', 'teenName', 'parentEmail', 'status', 'createdAt', 'updatedAt']) &&
+        isValidId(data.id) &&
+        isValidId(data.teenUid) &&
+        isNonEmptyString(data.teenName, 80) &&
+        isNonEmptyString(data.parentEmail, 200) &&
+        data.status in ['pending', 'approved', 'revoked'] &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function isValidJob(data) {
+      return data.keys().hasAll([
+        'id', 'clientId', 'clientName', 'clientVerified', 'title', 'description',
+        'category', 'budgetType', 'budgetMin', 'budgetMax', 'level', 'deadline',
+        'attachments', 'status', 'moderationStatus', 'bidCount', 'createdAt', 'updatedAt'
+      ]) &&
+      data.keys().hasOnly([
+        'id', 'clientId', 'clientName', 'clientVerified', 'title', 'description',
+        'category', 'budgetType', 'budgetMin', 'budgetMax', 'level', 'deadline',
+        'attachments', 'status', 'moderationStatus', 'bidCount', 'createdAt', 'updatedAt'
+      ]) &&
+      isValidId(data.id) &&
+      isValidId(data.clientId) &&
+      isNonEmptyString(data.clientName, 80) &&
+      data.clientVerified is bool &&
+      isNonEmptyString(data.title, 140) &&
+      isNonEmptyString(data.description, 4000) &&
+      data.category in ['Graphic Design', 'Video Editing', 'Social Media', 'Tutoring', 'Writing', 'Web Basics', 'Audio & Music'] &&
+      data.budgetType in ['fixed', 'hourly'] &&
+      data.budgetMin is number && data.budgetMin >= 5 && data.budgetMin <= 50000 &&
+      data.budgetMax is number && data.budgetMax >= data.budgetMin && data.budgetMax <= 50000 &&
+      data.level in ['beginner', 'intermediate'] &&
+      isNonEmptyString(data.deadline, 40) &&
+      data.attachments is list && data.attachments.size() <= 5 &&
+      data.status in ['open', 'in_progress', 'completed', 'closed', 'rejected'] &&
+      data.moderationStatus in ['approved', 'flagged', 'rejected'] &&
+      data.bidCount is number && data.bidCount >= 0 &&
+      data.createdAt is timestamp &&
+      data.updatedAt is timestamp;
+    }
+
+    function isValidBid(data) {
+      return data.keys().hasAll([
+        'id', 'jobId', 'jobTitle', 'clientId', 'freelancerId', 'freelancerName',
+        'freelancerRating', 'amount', 'deliveryDays', 'coverLetter', 'portfolioLinks',
+        'status', 'createdAt', 'updatedAt'
+      ]) &&
+      data.keys().hasOnly([
+        'id', 'jobId', 'jobTitle', 'clientId', 'freelancerId', 'freelancerName',
+        'freelancerRating', 'amount', 'deliveryDays', 'coverLetter', 'portfolioLinks',
+        'status', 'createdAt', 'updatedAt'
+      ]) &&
+      isValidId(data.id) &&
+      isValidId(data.jobId) &&
+      isNonEmptyString(data.jobTitle, 140) &&
+      isValidId(data.clientId) &&
+      isValidId(data.freelancerId) &&
+      isNonEmptyString(data.freelancerName, 80) &&
+      data.freelancerRating is number && data.freelancerRating >= 0 && data.freelancerRating <= 5 &&
+      data.amount is number && data.amount >= 5 && data.amount <= 50000 &&
+      data.deliveryDays is number && data.deliveryDays >= 1 && data.deliveryDays <= 180 &&
+      isNonEmptyString(data.coverLetter, 2000) &&
+      data.portfolioLinks is list && data.portfolioLinks.size() <= 5 &&
+      data.status in ['pending', 'interviewing', 'hired', 'declined', 'withdrawn'] &&
+      data.createdAt is timestamp &&
+      data.updatedAt is timestamp;
+    }
+
+    function isValidContract(data) {
+      return data.keys().hasAll([
+        'id', 'jobId', 'jobTitle', 'clientId', 'clientName', 'freelancerId', 'freelancerName',
+        'totalAmount', 'escrowFunded', 'escrowBalance', 'releasedAmount',
+        'milestones', 'status', 'createdAt', 'updatedAt'
+      ]) &&
+      data.keys().hasOnly([
+        'id', 'jobId', 'jobTitle', 'clientId', 'clientName', 'freelancerId', 'freelancerName',
+        'totalAmount', 'escrowFunded', 'escrowBalance', 'releasedAmount',
+        'milestones', 'status', 'createdAt', 'updatedAt'
+      ]) &&
+      isValidId(data.id) &&
+      isValidId(data.jobId) &&
+      isNonEmptyString(data.jobTitle, 140) &&
+      isValidId(data.clientId) &&
+      isNonEmptyString(data.clientName, 80) &&
+      isValidId(data.freelancerId) &&
+      isNonEmptyString(data.freelancerName, 80) &&
+      data.totalAmount is number && data.totalAmount >= 5 && data.totalAmount <= 50000 &&
+      data.escrowFunded is bool &&
+      data.escrowBalance is number && data.escrowBalance >= 0 && data.escrowBalance <= 50000 &&
+      data.releasedAmount is number && data.releasedAmount >= 0 && data.releasedAmount <= data.totalAmount &&
+      data.milestones is list && data.milestones.size() >= 1 && data.milestones.size() <= 10 &&
+      data.status in ['active', 'disputed', 'completed', 'resolved', 'cancelled'] &&
+      data.createdAt is timestamp &&
+      data.updatedAt is timestamp;
+    }
+
+    function isValidDispute(data) {
+      return data.keys().hasAll([
+        'id', 'contractId', 'jobTitle', 'clientId', 'freelancerId', 'openedBy',
+        'reason', 'description', 'evidenceUrls', 'status', 'resolution', 'adminNote',
+        'createdAt', 'updatedAt'
+      ]) &&
+      data.keys().hasOnly([
+        'id', 'contractId', 'jobTitle', 'clientId', 'freelancerId', 'openedBy',
+        'reason', 'description', 'evidenceUrls', 'status', 'resolution', 'adminNote',
+        'createdAt', 'updatedAt'
+      ]) &&
+      isValidId(data.id) &&
+      isValidId(data.contractId) &&
+      isNonEmptyString(data.jobTitle, 140) &&
+      isValidId(data.clientId) &&
+      isValidId(data.freelancerId) &&
+      isValidId(data.openedBy) &&
+      isNonEmptyString(data.reason, 200) &&
+      isNonEmptyString(data.description, 2000) &&
+      data.evidenceUrls is list && data.evidenceUrls.size() <= 5 &&
+      data.status in ['open', 'under_review', 'resolved'] &&
+      data.resolution in ['none', 'release_freelancer', 'refund_client', 'split_50_50'] &&
+      isOptionalString(data.adminNote, 1000) &&
+      data.createdAt is timestamp &&
+      data.updatedAt is timestamp;
+    }
+
+    function isValidChatRoom(data) {
+      return data.keys().hasAll([
+        'id', 'jobId', 'jobTitle', 'contractId', 'clientId', 'clientName',
+        'freelancerId', 'freelancerName', 'isHired', 'lastMessage', 'updatedAt'
+      ]) &&
+      data.keys().hasOnly([
+        'id', 'jobId', 'jobTitle', 'contractId', 'clientId', 'clientName',
+        'freelancerId', 'freelancerName', 'isHired', 'lastMessage', 'updatedAt'
+      ]) &&
+      isValidId(data.id) &&
+      isValidId(data.jobId) &&
+      isNonEmptyString(data.jobTitle, 140) &&
+      isOptionalString(data.contractId, 128) &&
+      isValidId(data.clientId) &&
+      isNonEmptyString(data.clientName, 80) &&
+      isValidId(data.freelancerId) &&
+      isNonEmptyString(data.freelancerName, 80) &&
+      data.isHired is bool &&
+      isOptionalString(data.lastMessage, 300) &&
+      data.updatedAt is timestamp;
+    }
+
+    function isValidChatMessage(data) {
+      return data.keys().hasAll([
+        'id', 'chatId', 'senderId', 'senderName', 'text', 'wasFiltered', 'createdAt'
+      ]) &&
+      data.keys().hasOnly([
+        'id', 'chatId', 'senderId', 'senderName', 'text', 'attachmentName',
+        'attachmentUrl', 'wasFiltered', 'createdAt'
+      ]) &&
+      isValidId(data.id) &&
+      isValidId(data.chatId) &&
+      isValidId(data.senderId) &&
+      isNonEmptyString(data.senderName, 80) &&
+      isNonEmptyString(data.text, 2000) &&
+      (!('attachmentName' in data) || isOptionalString(data.attachmentName, 160)) &&
+      (!('attachmentUrl' in data) || isOptionalString(data.attachmentUrl, 500)) &&
+      data.wasFiltered is bool &&
+      data.createdAt is timestamp;
+    }
+
+    function isValidReview(data) {
+      return data.keys().hasAll([
+        'id', 'contractId', 'authorId', 'authorName', 'targetUserId',
+        'authorRole', 'rating', 'subRatings', 'comment', 'replyText', 'isHidden', 'createdAt'
+      ]) &&
+      data.keys().hasOnly([
+        'id', 'contractId', 'authorId', 'authorName', 'targetUserId',
+        'authorRole', 'rating', 'subRatings', 'comment', 'replyText', 'isHidden', 'createdAt'
+      ]) &&
+      isValidId(data.id) &&
+      isValidId(data.contractId) &&
+      isValidId(data.authorId) &&
+      isNonEmptyString(data.authorName, 80) &&
+      isValidId(data.targetUserId) &&
+      data.authorRole in ['client', 'freelancer'] &&
+      data.rating is number && data.rating >= 1 && data.rating <= 5 &&
+      data.subRatings is map &&
+      isNonEmptyString(data.comment, 1000) &&
+      isOptionalString(data.replyText, 600) &&
+      data.isHidden is bool &&
+      data.createdAt is timestamp;
+    }
+
+    function isValidNotification(data) {
+      return data.keys().hasAll(['id', 'userId', 'title', 'body', 'link', 'read', 'createdAt']) &&
+        data.keys().hasOnly(['id', 'userId', 'title', 'body', 'link', 'read', 'createdAt']) &&
+        isValidId(data.id) &&
+        isValidId(data.userId) &&
+        isNonEmptyString(data.title, 120) &&
+        isNonEmptyString(data.body, 300) &&
+        isNonEmptyString(data.link, 200) &&
+        data.read is bool &&
+        data.createdAt is timestamp;
+    }
+
+    // ---------------------------------------------------------
+    // 3. Collection Rules
+    // ---------------------------------------------------------
+
+    // Admins registry
+    match /admins/{adminId} {
+      allow get: if isOwner(adminId) || isAdmin();
+      allow list: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
+    // Private User Accounts (Strict PII Isolation)
+    match /users/{userId} {
+      allow get: if isOwner(userId) || isAdmin();
+      allow list: if isAdmin();
+
+      allow create: if isVerifiedEmail() &&
+        isValidId(userId) &&
+        isOwner(userId) &&
+        isValidUserPrivate(incoming()) &&
+        incoming().uid == request.auth.uid &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        incoming().isBanned == false &&
+        incoming().idVerified == false &&
+        incoming().escrowHeld == 0 &&
+        incoming().earnedBalance == 0 &&
+        incoming().walletBalance <= 500 &&
+        incoming().parentalConsentStatus in ['not_required', 'pending'] &&
+        (incoming().ageGroup != '13_17' || incoming().accountStatus != 'active');
+
+      allow update: if isVerifiedEmail() &&
+        isValidId(userId) &&
+        isValidUserPrivate(incoming()) &&
+        incoming().uid == existing().uid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time && (
+          isAdmin() ||
+          // Parent email match approving/revoking consent
+          (
+            existing().ageGroup == '13_17' &&
+            existing().parentEmail == request.auth.token.email &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['parentalConsentStatus', 'accountStatus', 'idVerified', 'updatedAt']) &&
+            incoming().parentalConsentStatus in ['approved', 'revoked']
+          ) ||
+          // Owner safe updates (cannot self-approve consent, cannot unban, cannot verify ID)
+          (
+            isOwner(userId) &&
+            existing().isBanned == false &&
+            incoming().parentalConsentStatus == existing().parentalConsentStatus &&
+            incoming().isBanned == existing().isBanned &&
+            incoming().idVerified == existing().idVerified &&
+            (
+              // Action: Switch role or displayName
+              (
+                incoming().diff(existing()).affectedKeys().hasOnly(['role', 'displayName', 'updatedAt'])
+              ) ||
+              // Action: Complete age onboarding (only from onboarding/unverified)
+              (
+                existing().accountStatus == 'onboarding' &&
+                incoming().diff(existing()).affectedKeys().hasOnly([
+                  'role', 'displayName', 'dob', 'ageGroup', 'parentEmail',
+                  'parentalConsentStatus', 'parentConsentId', 'accountStatus', 'updatedAt'
+                ]) &&
+                (incoming().ageGroup != '13_17' || (incoming().accountStatus == 'pending_parental_consent' && incoming().parentalConsentStatus == 'pending')) &&
+                (incoming().ageGroup != 'under_13' || incoming().accountStatus == 'blocked_coppa')
+              ) ||
+              // Action: Update wallet/escrow balances during active contract flow
+              (
+                existing().accountStatus == 'active' &&
+                incoming().diff(existing()).affectedKeys().hasOnly(['walletBalance', 'escrowHeld', 'earnedBalance', 'updatedAt'])
+              )
+            )
+          )
+        );
+
+      allow delete: if isAdmin();
+    }
+
+    // Public Profiles (No PII)
+    match /profiles/{userId} {
+      allow get: if isValidId(userId);
+      allow list: if isSignedIn();
+
+      allow create: if isVerifiedEmail() &&
+        isValidId(userId) &&
+        isOwner(userId) &&
+        isValidPublicProfile(incoming()) &&
+        incoming().uid == request.auth.uid &&
+        incoming().updatedAt == request.time &&
+        incoming().idVerified == false &&
+        incoming().rating == 0 &&
+        incoming().reviewCount == 0 &&
+        incoming().completedJobs == 0;
+
+      allow update: if isVerifiedEmail() &&
+        isValidId(userId) &&
+        isValidPublicProfile(incoming()) &&
+        incoming().uid == existing().uid &&
+        incoming().updatedAt == request.time && (
+          isAdmin() ||
+          (
+            isOwner(userId) &&
+            incoming().idVerified == existing().idVerified &&
+            incoming().accountStatus == existing().accountStatus &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'displayName', 'photoURL', 'role', 'bio', 'skills',
+              'portfolio', 'timezone', 'availability', 'updatedAt'
+            ])
+          )
+        );
+
+      allow delete: if isAdmin();
+    }
+
+    // Parent Consents
+    match /parentConsents/{consentId} {
+      allow get: if isValidId(consentId) && (
+        isAdmin() ||
+        (isSignedIn() && (existing().teenUid == request.auth.uid || existing().parentEmail == request.auth.token.email))
+      );
+      allow list: if isSignedIn() && (
+        isAdmin() ||
+        resource.data.teenUid == request.auth.uid ||
+        resource.data.parentEmail == request.auth.token.email
+      );
+
+      allow create: if isVerifiedEmail() &&
+        isValidId(consentId) &&
+        isValidParentConsent(incoming()) &&
+        incoming().id == consentId &&
+        incoming().teenUid == request.auth.uid &&
+        incoming().status == 'pending' &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+
+      allow update: if isVerifiedEmail() &&
+        isValidId(consentId) &&
+        isValidParentConsent(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().teenUid == existing().teenUid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']) && (
+          isAdmin() ||
+          existing().parentEmail == request.auth.token.email
+        );
+
+      allow delete: if isAdmin();
+    }
+
+    // Jobs
+    match /jobs/{jobId} {
+      allow get: if isValidId(jobId);
+      allow list: if isSignedIn();
+
+      allow create: if isActiveAccount() &&
+        userRole() == 'client' &&
+        isValidId(jobId) &&
+        isValidJob(incoming()) &&
+        incoming().id == jobId &&
+        incoming().clientId == request.auth.uid &&
+        incoming().status == 'open' &&
+        incoming().moderationStatus == 'approved' &&
+        incoming().bidCount == 0 &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time;
+
+      allow update: if isVerifiedEmail() &&
+        isValidId(jobId) &&
+        isValidJob(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().clientId == existing().clientId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time && (
+          isAdmin() ||
+          (
+            isActiveAccount() &&
+            existing().clientId == request.auth.uid &&
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'title', 'description', 'category', 'budgetType', 'budgetMin',
+              'budgetMax', 'level', 'deadline', 'attachments', 'status', 'updatedAt'
+            ])
+          ) ||
+          (
+            isActiveAccount() &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['bidCount', 'updatedAt']) &&
+            incoming().bidCount == existing().bidCount + 1
+          )
+        );
+
+      allow delete: if isAdmin() || (isActiveAccount() && existing().clientId == request.auth.uid);
+    }
+
+    // Bids
+    match /bids/{bidId} {
+      allow get: if isValidId(bidId) && isSignedIn() && (
+        isAdmin() ||
+        existing().freelancerId == request.auth.uid ||
+        existing().clientId == request.auth.uid
+      );
+      allow list: if isSignedIn() && (
+        isAdmin() ||
+        resource.data.freelancerId == request.auth.uid ||
+        resource.data.clientId == request.auth.uid
+      );
+
+      allow create: if isActiveAccount() &&
+        userRole() == 'freelancer' &&
+        isValidId(bidId) &&
+        isValidBid(incoming()) &&
+        incoming().id == bidId &&
+        incoming().freelancerId == request.auth.uid &&
+        incoming().status == 'pending' &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        exists(/databases/$(database)/documents/jobs/$(incoming().jobId)) &&
+        get(/databases/$(database)/documents/jobs/$(incoming().jobId)).data.status == 'open';
+
+      allow update: if isActiveAccount() &&
+        isValidId(bidId) &&
+        isValidBid(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().jobId == existing().jobId &&
+        incoming().clientId == existing().clientId &&
+        incoming().freelancerId == existing().freelancerId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time && (
+          isAdmin() ||
+          (
+            existing().clientId == request.auth.uid &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']) &&
+            incoming().status in ['interviewing', 'hired', 'declined']
+          ) ||
+          (
+            existing().freelancerId == request.auth.uid &&
+            existing().status == 'pending' &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']) &&
+            incoming().status == 'withdrawn'
+          )
+        );
+
+      allow delete: if isAdmin();
+    }
+
+    // Contracts & Escrow
+    match /contracts/{contractId} {
+      allow get: if isValidId(contractId) && isSignedIn() && (
+        isAdmin() ||
+        existing().clientId == request.auth.uid ||
+        existing().freelancerId == request.auth.uid
+      );
+      allow list: if isSignedIn() && (
+        isAdmin() ||
+        resource.data.clientId == request.auth.uid ||
+        resource.data.freelancerId == request.auth.uid
+      );
+
+      allow create: if isActiveAccount() &&
+        isValidId(contractId) &&
+        isValidContract(incoming()) &&
+        incoming().id == contractId &&
+        incoming().clientId == request.auth.uid &&
+        incoming().status == 'active' &&
+        incoming().releasedAmount == 0 &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        exists(/databases/$(database)/documents/jobs/$(incoming().jobId));
+
+      allow update: if isVerifiedEmail() &&
+        isValidId(contractId) &&
+        isValidContract(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().jobId == existing().jobId &&
+        incoming().clientId == existing().clientId &&
+        incoming().freelancerId == existing().freelancerId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time && (
+          isAdmin() ||
+          (
+            existing().status != 'completed' &&
+            existing().status != 'resolved' &&
+            existing().status != 'cancelled' && (
+              // Client actions: fund escrow, approve milestone (releasedAmount only increases), request revision, or open dispute
+              (
+                existing().clientId == request.auth.uid &&
+                incoming().releasedAmount >= existing().releasedAmount &&
+                incoming().diff(existing()).affectedKeys().hasOnly([
+                  'escrowFunded', 'escrowBalance', 'releasedAmount', 'milestones', 'status', 'updatedAt'
+                ])
+              ) ||
+              // Freelancer actions: submit milestone deliverable or open dispute (cannot touch releasedAmount or escrowBalance)
+              (
+                existing().freelancerId == request.auth.uid &&
+                incoming().escrowFunded == existing().escrowFunded &&
+                incoming().escrowBalance == existing().escrowBalance &&
+                incoming().releasedAmount == existing().releasedAmount &&
+                incoming().diff(existing()).affectedKeys().hasOnly(['milestones', 'status', 'updatedAt'])
+              )
+            )
+          )
+        );
+
+      allow delete: if isAdmin();
+    }
+
+    // Disputes
+    match /disputes/{disputeId} {
+      allow get: if isValidId(disputeId) && isSignedIn() && (
+        isAdmin() ||
+        existing().clientId == request.auth.uid ||
+        existing().freelancerId == request.auth.uid
+      );
+      allow list: if isSignedIn() && (
+        isAdmin() ||
+        resource.data.clientId == request.auth.uid ||
+        resource.data.freelancerId == request.auth.uid
+      );
+
+      allow create: if isActiveAccount() &&
+        isValidId(disputeId) &&
+        isValidDispute(incoming()) &&
+        incoming().id == disputeId &&
+        incoming().openedBy == request.auth.uid &&
+        incoming().status == 'open' &&
+        incoming().resolution == 'none' &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        exists(/databases/$(database)/documents/contracts/$(incoming().contractId));
+
+      allow update: if isAdmin() &&
+        isValidId(disputeId) &&
+        isValidDispute(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().contractId == existing().contractId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time;
+
+      allow delete: if isAdmin();
+    }
+
+    // Chat Rooms & Messages (Master Gate)
+    match /chats/{chatId} {
+      allow get: if isValidId(chatId) && isSignedIn() && (
+        isAdmin() ||
+        existing().clientId == request.auth.uid ||
+        existing().freelancerId == request.auth.uid
+      );
+      allow list: if isSignedIn() && (
+        isAdmin() ||
+        resource.data.clientId == request.auth.uid ||
+        resource.data.freelancerId == request.auth.uid
+      );
+
+      allow create: if isActiveAccount() &&
+        isValidId(chatId) &&
+        isValidChatRoom(incoming()) &&
+        incoming().id == chatId &&
+        (incoming().clientId == request.auth.uid || incoming().freelancerId == request.auth.uid) &&
+        incoming().updatedAt == request.time;
+
+      allow update: if isActiveAccount() &&
+        isValidId(chatId) &&
+        isValidChatRoom(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().clientId == existing().clientId &&
+        incoming().freelancerId == existing().freelancerId &&
+        incoming().updatedAt == request.time && (
+          isAdmin() ||
+          (
+            (existing().clientId == request.auth.uid || existing().freelancerId == request.auth.uid) &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['lastMessage', 'isHired', 'contractId', 'updatedAt'])
+          )
+        );
+
+      allow delete: if isAdmin();
+
+      match /messages/{messageId} {
+        allow get: if isValidId(chatId) && isValidId(messageId) && isSignedIn() && (
+          isAdmin() ||
+          get(/databases/$(database)/documents/chats/$(chatId)).data.clientId == request.auth.uid ||
+          get(/databases/$(database)/documents/chats/$(chatId)).data.freelancerId == request.auth.uid
+        );
+        allow list: if isValidId(chatId) && isSignedIn() && (
+          isAdmin() ||
+          get(/databases/$(database)/documents/chats/$(chatId)).data.clientId == request.auth.uid ||
+          get(/databases/$(database)/documents/chats/$(chatId)).data.freelancerId == request.auth.uid
+        );
+
+        allow create: if isActiveAccount() &&
+          isValidId(chatId) &&
+          isValidId(messageId) &&
+          isValidChatMessage(incoming()) &&
+          incoming().id == messageId &&
+          incoming().chatId == chatId &&
+          incoming().senderId == request.auth.uid &&
+          incoming().createdAt == request.time &&
+          (
+            get(/databases/$(database)/documents/chats/$(chatId)).data.clientId == request.auth.uid ||
+            get(/databases/$(database)/documents/chats/$(chatId)).data.freelancerId == request.auth.uid
+          );
+
+        allow update, delete: if isAdmin();
+      }
+    }
+
+    // Reviews
+    match /reviews/{reviewId} {
+      allow get: if isValidId(reviewId);
+      allow list: if isSignedIn();
+
+      allow create: if isActiveAccount() &&
+        isValidId(reviewId) &&
+        isValidReview(incoming()) &&
+        incoming().id == reviewId &&
+        incoming().authorId == request.auth.uid &&
+        incoming().replyText == '' &&
+        incoming().isHidden == false &&
+        incoming().createdAt == request.time &&
+        exists(/databases/$(database)/documents/contracts/$(incoming().contractId));
+
+      allow update: if isVerifiedEmail() &&
+        isValidId(reviewId) &&
+        isValidReview(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().contractId == existing().contractId &&
+        incoming().authorId == existing().authorId &&
+        incoming().rating == existing().rating &&
+        incoming().comment == existing().comment &&
+        incoming().createdAt == existing().createdAt && (
+          isAdmin() ||
+          (
+            existing().targetUserId == request.auth.uid &&
+            existing().replyText == '' &&
+            incoming().isHidden == existing().isHidden &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['replyText'])
+          )
+        );
+
+      allow delete: if isAdmin();
+    }
+
+    // Notifications
+    match /notifications/{notificationId} {
+      allow get: if isValidId(notificationId) && isSignedIn() && (
+        isAdmin() || existing().userId == request.auth.uid
+      );
+      allow list: if isSignedIn() && (
+        isAdmin() || resource.data.userId == request.auth.uid
+      );
+
+      allow create: if isActiveAccount() &&
+        isValidId(notificationId) &&
+        isValidNotification(incoming()) &&
+        incoming().id == notificationId &&
+        incoming().read == false &&
+        incoming().createdAt == request.time;
+
+      allow update: if isSignedIn() &&
+        isValidId(notificationId) &&
+        isValidNotification(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().userId == existing().userId &&
+        incoming().createdAt == existing().createdAt &&
+        existing().userId == request.auth.uid &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['read']);
+
+      allow delete: if isAdmin() || (isSignedIn() && existing().userId == request.auth.uid);
+    }
+  }
+}

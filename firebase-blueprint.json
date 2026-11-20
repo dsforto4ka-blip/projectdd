@@ -1,0 +1,280 @@
+{
+  "entities": {
+    "UserPrivate": {
+      "title": "UserPrivate",
+      "description": "Private user compliance, wallet, and parental consent record isolated from public profiles.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "email": { "type": "string", "format": "email", "maxLength": 200 },
+        "displayName": { "type": "string", "maxLength": 80 },
+        "role": { "type": "string", "enum": ["freelancer", "client"] },
+        "dob": { "type": "string", "maxLength": 20 },
+        "ageGroup": { "type": "string", "enum": ["under_13", "13_17", "18_plus", "unverified"] },
+        "parentEmail": { "type": "string", "maxLength": 200 },
+        "parentalConsentStatus": { "type": "string", "enum": ["not_required", "pending", "approved", "revoked"] },
+        "parentConsentId": { "type": "string", "maxLength": 128 },
+        "accountStatus": { "type": "string", "enum": ["onboarding", "blocked_coppa", "pending_parental_consent", "active", "suspended", "banned"] },
+        "walletBalance": { "type": "number" },
+        "escrowHeld": { "type": "number" },
+        "earnedBalance": { "type": "number" },
+        "emailVerified": { "type": "boolean" },
+        "idVerified": { "type": "boolean" },
+        "isBanned": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "role", "ageGroup", "parentalConsentStatus", "accountStatus", "walletBalance", "escrowHeld", "earnedBalance", "createdAt", "updatedAt"]
+    },
+    "PublicProfile": {
+      "title": "PublicProfile",
+      "description": "Publicly readable non-PII freelancer or client showcase profile.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "displayName": { "type": "string", "maxLength": 80 },
+        "photoURL": { "type": "string", "maxLength": 500 },
+        "role": { "type": "string", "enum": ["freelancer", "client"] },
+        "ageGroupLabel": { "type": "string", "enum": ["13–17 Teen Creator", "18+ Verified Member", "Unverified"] },
+        "bio": { "type": "string", "maxLength": 500 },
+        "skills": { "type": "array" },
+        "portfolio": { "type": "array" },
+        "timezone": { "type": "string", "maxLength": 64 },
+        "availability": { "type": "string", "enum": ["part-time", "weekends", "flexible"] },
+        "rating": { "type": "number" },
+        "reviewCount": { "type": "number" },
+        "completedJobs": { "type": "number" },
+        "idVerified": { "type": "boolean" },
+        "emailVerified": { "type": "boolean" },
+        "accountStatus": { "type": "string", "enum": ["onboarding", "blocked_coppa", "pending_parental_consent", "active", "suspended", "banned"] },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "displayName", "role", "ageGroupLabel", "bio", "rating", "reviewCount", "completedJobs", "idVerified", "emailVerified", "accountStatus", "updatedAt"]
+    },
+    "ParentConsent": {
+      "title": "ParentConsent",
+      "description": "Parental consent verification link record for teen accounts (13-17).",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "teenUid": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "teenName": { "type": "string", "maxLength": 80 },
+        "parentEmail": { "type": "string", "maxLength": 200 },
+        "status": { "type": "string", "enum": ["pending", "approved", "revoked"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "teenUid", "teenName", "parentEmail", "status", "createdAt", "updatedAt"]
+    },
+    "Job": {
+      "title": "Job",
+      "description": "Freelance job listing posted by a verified client.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "clientId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "clientName": { "type": "string", "maxLength": 80 },
+        "clientVerified": { "type": "boolean" },
+        "title": { "type": "string", "maxLength": 140 },
+        "description": { "type": "string", "maxLength": 4000 },
+        "category": { "type": "string", "enum": ["Graphic Design", "Video Editing", "Social Media", "Tutoring", "Writing", "Web Basics", "Audio & Music"] },
+        "budgetType": { "type": "string", "enum": ["fixed", "hourly"] },
+        "budgetMin": { "type": "number" },
+        "budgetMax": { "type": "number" },
+        "level": { "type": "string", "enum": ["beginner", "intermediate"] },
+        "deadline": { "type": "string", "maxLength": 40 },
+        "attachments": { "type": "array" },
+        "status": { "type": "string", "enum": ["open", "in_progress", "completed", "closed", "rejected"] },
+        "moderationStatus": { "type": "string", "enum": ["approved", "flagged", "rejected"] },
+        "bidCount": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "clientId", "clientName", "title", "description", "category", "budgetType", "budgetMin", "budgetMax", "level", "deadline", "status", "moderationStatus", "bidCount", "createdAt", "updatedAt"]
+    },
+    "Bid": {
+      "title": "Bid",
+      "description": "Proposal submitted by an active freelancer on a job.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "jobId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "jobTitle": { "type": "string", "maxLength": 140 },
+        "clientId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "freelancerId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "freelancerName": { "type": "string", "maxLength": 80 },
+        "freelancerRating": { "type": "number" },
+        "amount": { "type": "number" },
+        "deliveryDays": { "type": "number" },
+        "coverLetter": { "type": "string", "maxLength": 2000 },
+        "portfolioLinks": { "type": "array" },
+        "status": { "type": "string", "enum": ["pending", "interviewing", "hired", "declined", "withdrawn"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "jobId", "jobTitle", "clientId", "freelancerId", "freelancerName", "amount", "deliveryDays", "coverLetter", "status", "createdAt", "updatedAt"]
+    },
+    "Contract": {
+      "title": "Contract",
+      "description": "Escrow-backed contract between a client and teen freelancer with milestones.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "jobId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "jobTitle": { "type": "string", "maxLength": 140 },
+        "clientId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "clientName": { "type": "string", "maxLength": 80 },
+        "freelancerId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "freelancerName": { "type": "string", "maxLength": 80 },
+        "totalAmount": { "type": "number" },
+        "escrowFunded": { "type": "boolean" },
+        "escrowBalance": { "type": "number" },
+        "releasedAmount": { "type": "number" },
+        "milestones": { "type": "array" },
+        "status": { "type": "string", "enum": ["active", "disputed", "completed", "resolved", "cancelled"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "jobId", "jobTitle", "clientId", "clientName", "freelancerId", "freelancerName", "totalAmount", "escrowFunded", "escrowBalance", "releasedAmount", "milestones", "status", "createdAt", "updatedAt"]
+    },
+    "Dispute": {
+      "title": "Dispute",
+      "description": "Dispute opened by client or freelancer for admin arbitration.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "contractId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "jobTitle": { "type": "string", "maxLength": 140 },
+        "clientId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "freelancerId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "openedBy": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "reason": { "type": "string", "maxLength": 200 },
+        "description": { "type": "string", "maxLength": 2000 },
+        "evidenceUrls": { "type": "array" },
+        "status": { "type": "string", "enum": ["open", "under_review", "resolved"] },
+        "resolution": { "type": "string", "enum": ["none", "release_freelancer", "refund_client", "split_50_50"] },
+        "adminNote": { "type": "string", "maxLength": 1000 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "contractId", "jobTitle", "clientId", "freelancerId", "openedBy", "reason", "description", "status", "resolution", "createdAt", "updatedAt"]
+    },
+    "ChatRoom": {
+      "title": "ChatRoom",
+      "description": "Interview or contract chat room between two participants.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "jobId": { "type": "string", "maxLength": 128 },
+        "jobTitle": { "type": "string", "maxLength": 140 },
+        "contractId": { "type": "string", "maxLength": 128 },
+        "clientId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "clientName": { "type": "string", "maxLength": 80 },
+        "freelancerId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "freelancerName": { "type": "string", "maxLength": 80 },
+        "isHired": { "type": "boolean" },
+        "lastMessage": { "type": "string", "maxLength": 300 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "jobId", "jobTitle", "clientId", "clientName", "freelancerId", "freelancerName", "isHired", "updatedAt"]
+    },
+    "ChatMessage": {
+      "title": "ChatMessage",
+      "description": "Individual message inside a chat room.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "chatId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "senderId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "senderName": { "type": "string", "maxLength": 80 },
+        "text": { "type": "string", "maxLength": 2000 },
+        "attachmentName": { "type": "string", "maxLength": 160 },
+        "attachmentUrl": { "type": "string", "maxLength": 500 },
+        "wasFiltered": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "chatId", "senderId", "senderName", "text", "wasFiltered", "createdAt"]
+    },
+    "Review": {
+      "title": "Review",
+      "description": "Immutable contract review with single reply and admin moderation.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "contractId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "authorId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "authorName": { "type": "string", "maxLength": 80 },
+        "targetUserId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "authorRole": { "type": "string", "enum": ["client", "freelancer"] },
+        "rating": { "type": "number" },
+        "subRatings": { "type": "object" },
+        "comment": { "type": "string", "maxLength": 1000 },
+        "replyText": { "type": "string", "maxLength": 600 },
+        "isHidden": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "contractId", "authorId", "authorName", "targetUserId", "authorRole", "rating", "comment", "isHidden", "createdAt"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "In-app notification targeted to a user.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "userId": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "title": { "type": "string", "maxLength": 120 },
+        "body": { "type": "string", "maxLength": 300 },
+        "link": { "type": "string", "maxLength": 200 },
+        "read": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "userId", "title", "body", "link", "read", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserPrivate" },
+      "description": "Private user account, PII, wallet, and parental consent status."
+    },
+    "/profiles/{userId}": {
+      "schema": { "$ref": "#/entities/PublicProfile" },
+      "description": "Public non-PII profile cards for freelancers and clients."
+    },
+    "/parentConsents/{consentId}": {
+      "schema": { "$ref": "#/entities/ParentConsent" },
+      "description": "Parental approval/revocation tokens for teens 13-17."
+    },
+    "/jobs/{jobId}": {
+      "schema": { "$ref": "#/entities/Job" },
+      "description": "Freelance job board listings."
+    },
+    "/bids/{bidId}": {
+      "schema": { "$ref": "#/entities/Bid" },
+      "description": "Bids/proposals on jobs."
+    },
+    "/contracts/{contractId}": {
+      "schema": { "$ref": "#/entities/Contract" },
+      "description": "Escrow-backed contracts with milestone progress."
+    },
+    "/disputes/{disputeId}": {
+      "schema": { "$ref": "#/entities/Dispute" },
+      "description": "Disputes escalated for admin arbitration."
+    },
+    "/chats/{chatId}": {
+      "schema": { "$ref": "#/entities/ChatRoom" },
+      "description": "Real-time interview and contract chat rooms."
+    },
+    "/chats/{chatId}/messages/{messageId}": {
+      "schema": { "$ref": "#/entities/ChatMessage" },
+      "description": "Real-time chat messages inside a room."
+    },
+    "/reviews/{reviewId}": {
+      "schema": { "$ref": "#/entities/Review" },
+      "description": "Immutable two-sided contract reviews."
+    },
+    "/notifications/{notificationId}": {
+      "schema": { "$ref": "#/entities/Notification" },
+      "description": "In-app notifications per user."
+    }
+  }
+}

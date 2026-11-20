@@ -1,0 +1,6 @@
+{
+  "name": "VibeWorking",
+  "description": "Российская фриланс-биржа для подростков 13–17 лет с согласием родителей, безопасным эскроу в рублях, чатом и модерацией.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
