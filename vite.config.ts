@@ -28,33 +28,6 @@ export default defineConfig(({command}) => {
           }
         },
       },
-      {
-        name: 'sync-docs-hosting-bundle',
-        apply: 'build',
-        closeBundle(error?: Error): void {
-          if (error) {
-            return;
-          }
-          const distDir = path.resolve(__dirname, 'dist');
-          const docsDir = path.resolve(__dirname, 'docs');
-          if (!fs.existsSync(distDir)) {
-            return;
-          }
-          fs.rmSync(docsDir, {recursive: true, force: true});
-          fs.mkdirSync(docsDir, {recursive: true});
-          for (const entry of ['index.html', 'assets', '.htaccess', '.nojekyll']) {
-            const srcPath = path.join(distDir, entry);
-            const destPath = path.join(docsDir, entry);
-            if (fs.existsSync(srcPath)) {
-              fs.cpSync(srcPath, destPath, {recursive: true, force: true});
-            }
-          }
-          const builtIndex = path.join(docsDir, 'index.html');
-          if (fs.existsSync(builtIndex)) {
-            fs.copyFileSync(builtIndex, path.join(docsDir, '404.html'));
-          }
-        },
-      },
     ],
     resolve: {
       alias: {
