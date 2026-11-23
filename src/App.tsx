@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { BrowserRouter, HashRouter, Navigate, Route, Routes, useSearchParams } from 'react-router-dom';
+import { BrowserRouter, HashRouter, Navigate, Route, Routes, useNavigate, useSearchParams } from 'react-router-dom';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Layout } from './components/Layout';
@@ -17,13 +17,19 @@ import { MessagesPage } from './pages/MessagesPage';
 import { ProfilePage } from './pages/ProfilePage';
 import { AdminPage } from './pages/AdminPage';
 
-const isGitHubPages =
-  typeof window !== 'undefined' && window.location.hostname.endsWith('.github.io');
+const useHashRouting =
+  import.meta.env.PROD ||
+  (typeof window !== 'undefined' && window.location.hostname.endsWith('.github.io'));
 
 function AutostartHandler() {
   const [params] = useSearchParams();
+  const navigate = useNavigate();
   const { enterDemoSession, userPrivate } = useAuth();
-  const autostart = params.get('autostart');
+  const searchParams =
+    typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+  const autostart = params.get('autostart') || searchParams?.get('autostart');
+  const finishEmailSignIn =
+    params.get('finishEmailSignIn') || searchParams?.get('finishEmailSignIn');
 
   useEffect(() => {
     if (autostart === '1' && !userPrivate) {
@@ -31,11 +37,17 @@ function AutostartHandler() {
     }
   }, [autostart, userPrivate, enterDemoSession]);
 
+  useEffect(() => {
+    if (finishEmailSignIn === '1') {
+      navigate('/auth', { replace: true });
+    }
+  }, [finishEmailSignIn, navigate]);
+
   return null;
 }
 
 export default function App() {
-  const Router = isGitHubPages ? HashRouter : BrowserRouter;
+  const Router = useHashRouting ? HashRouter : BrowserRouter;
 
   return (
     <ErrorBoundary>

@@ -38,7 +38,7 @@ export class ErrorBoundary extends React.Component<
             </pre>
             <button
               type="button"
-              onClick={() => window.location.assign(import.meta.env.BASE_URL)}
+              onClick={() => window.location.assign(`${window.location.origin}${window.location.pathname}`)}
               className="mt-6 px-4 py-2 text-sm font-semibold rounded-lg bg-brand text-brand-ink hover:bg-brand-hover transition-colors"
             >
               На главную

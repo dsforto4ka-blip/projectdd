@@ -71,8 +71,15 @@ interface AppStoreState {
   setDemoNotifications: (updater: (prev: NotificationItem[]) => NotificationItem[]) => void;
 }
 
-const initialDark =
-  typeof window !== 'undefined' && window.localStorage.getItem('vibeworking_theme') === 'dark';
+function getInitialDarkMode(): boolean {
+  try {
+    return typeof window !== 'undefined' && window.localStorage.getItem('vibeworking_theme') === 'dark';
+  } catch {
+    return false;
+  }
+}
+
+const initialDark = getInitialDarkMode();
 
 if (typeof document !== 'undefined') {
   document.documentElement.classList.toggle('dark', initialDark);
@@ -86,8 +93,12 @@ export const useAppStore = create<AppStoreState>((set) => ({
       if (typeof document !== 'undefined') {
         document.documentElement.classList.toggle('dark', next);
       }
-      if (typeof window !== 'undefined') {
-        window.localStorage.setItem('vibeworking_theme', next ? 'dark' : 'light');
+      try {
+        if (typeof window !== 'undefined') {
+          window.localStorage.setItem('vibeworking_theme', next ? 'dark' : 'light');
+        }
+      } catch {
+        // Ignore storage restrictions
       }
       return { darkMode: next };
     }),
